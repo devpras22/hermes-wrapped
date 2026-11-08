@@ -178,7 +178,7 @@ def _clock_svg(hours: list[int], peak: int, size: int = 760) -> str:
         x0, y0 = cx + r0 * math.cos(ang), cy + r0 * math.sin(ang)
         x1, y1 = cx + max(r1, r0 + 6) * math.cos(ang), cy + max(r1, r0 + 6) * math.sin(ang)
         night = h >= 23 or h < 4
-        color = "var(--amber)" if h == peak else ("var(--ink)" if night else "rgba(216,202,172,0.5)")
+        color = "var(--amber)" if h == peak else ("var(--ink)" if night else "var(--idle)")
         glow = ' filter="url(#glow)"' if h == peak or night else ""
         parts.append(f'<line class="hbar" x1="{x0:.1f}" y1="{y0:.1f}" x2="{x1:.1f}" y2="{y1:.1f}" '
                      f'stroke="{color}" stroke-width="18"{glow}/>')
@@ -186,7 +186,7 @@ def _clock_svg(hours: list[int], peak: int, size: int = 760) -> str:
         ang = (h / 24) * 2 * math.pi - math.pi / 2
         x, y = cx + 100 * math.cos(ang), cy + 100 * math.sin(ang) + 12
         parts.append(f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" fill="var(--dim)" '
-                     f'font-family="VT323, monospace" font-size="40">{lab}</text>')
+                     f'style="font-family:var(--lab)" font-size="40">{lab}</text>')
     defs = ('<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/>'
             '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
     return f'<svg viewBox="0 0 520 520" width="{size}" height="{size}">{defs}{"".join(parts)}</svg>'
@@ -212,7 +212,7 @@ def _crew_svg(n: int, width: int) -> str:
         parts.append(f'<g class="cw" transform="translate({x - 52:.0f} {y - 34:.0f})" filter="url(#cglow)">'
                      '<rect width="104" height="70" fill="var(--bg)" stroke="var(--ink)" stroke-width="4"/>'
                      '<line x1="0" y1="16" x2="104" y2="16" stroke="var(--ink)" stroke-width="3"/>'
-                     '<text x="14" y="56" fill="var(--amber)" font-family="VT323, monospace" font-size="34">&gt;_</text></g>')
+                     '<text x="14" y="56" fill="var(--amber)" style="font-family:var(--lab)" font-size="34">&gt;_</text></g>')
     hub = (f'<g id="c-hub" filter="url(#cglow)"><rect x="{cx - 46}" y="{cy - 46}" width="92" height="92" fill="none" '
            f'stroke="var(--amber)" stroke-width="5"/><rect x="{cx - 22}" y="{cy - 22}" width="44" height="44" fill="var(--amber)"/></g>')
     defs = ('<defs><filter id="cglow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/>'
@@ -224,10 +224,100 @@ MOON = ('<svg class="icon" id="l-moon" viewBox="0 0 120 120" width="150" height=
         'fill="none" stroke="var(--amber)" stroke-width="6"/><path d="M92 30h8M96 26v8M30 22h6M33 19v6" stroke="var(--ink)" stroke-width="4"/></svg>')
 
 
+GRAIN = "grain.png"  # written next to the page by write_grain(); a bitmap is far cheaper to composite than an SVG filter
+
+
+def write_grain(path: Path, size: int = 256, seed: int = 7) -> None:
+    """A tileable film-grain PNG (white specks, alpha noise), stdlib only and deterministic."""
+    import random
+    import struct
+    import zlib
+    rnd = random.Random(seed)
+    rows = bytearray()
+    for _ in range(size):
+        rows.append(0)
+        for _ in range(size):
+            a = int(max(0.0, rnd.gauss(0, 1)) * 70)
+            rows += bytes((225, 230, 255, min(255, a)))
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + chunk(b"IEND", b""))
+    path.write_bytes(png)
+
+
+def _blue_css(W: int, H: int, tall: bool) -> str:
+    """Nous blue: navy and cobalt from hermes-agent.nousresearch.com, film grain and bloom from their X trailers."""
+    return f"""
+@font-face {{ font-family:'Pathway Gothic One'; src:url('fonts/PathwayGothicOne-Regular.ttf') format('truetype'); }}
+@font-face {{ font-family:'Instrument Serif'; src:url('fonts/InstrumentSerif-Italic.ttf') format('truetype'); font-style:italic; }}
+@font-face {{ font-family:'IBM Plex Mono'; src:url('fonts/IBMPlexMono-Medium.ttf') format('truetype'); font-weight:500; }}
+:root {{ --bg:#080A1C; --ink:#F2F3FF; --dim:#C3C7F2; --faint:#2E3270; --amber:#A9B0FF; --cobalt:#1F2BFF; --line:rgba(169,176,255,0.35);
+  --px:'Pathway Gothic One', sans-serif; --term:'Pathway Gothic One', sans-serif; --serif:'Instrument Serif', serif;
+  --mono:'IBM Plex Mono', monospace; --lab:'IBM Plex Mono', monospace; --idle:rgba(169,176,255,0.42); }}
+#stage {{ background:radial-gradient(ellipse 80% 60% at 50% 38%, #1A2060 0%, #0E1236 45%, var(--bg) 80%); }}
+.ink-glow {{ color:var(--ink); text-shadow:0 0 20px rgba(150,165,255,0.5); }}
+.amber-glow {{ color:var(--ink); text-shadow:0 0 2px rgba(255,255,255,0.7), 0 0 24px rgba(120,140,255,0.8); }}
+.amber {{ color:var(--amber); }}
+.kicker {{ font-family:var(--mono); font-weight:500; font-size:{40 if tall else 42}px; letter-spacing:0.08em; color:var(--amber); }}
+.l1, .l2, .note, .side, .vline, .sub, .bubble, .meta {{ font-family:var(--term); letter-spacing:0.01em; }}
+.mega, .mega2, .jobtitle, .bw, .dayline, .v, .who {{ font-family:var(--px); font-weight:400; letter-spacing:-0.01em; }}
+.mega {{ line-height:0.86; }}
+.bw2, .arch {{ font-family:var(--serif); font-style:italic; font-weight:400; letter-spacing:-0.01em; }}
+.bw2 {{ margin-top:-0.12em; }}
+.who {{ font-family:var(--mono); font-weight:500; font-size:{40 if tall else 42}px; letter-spacing:0.08em; }}
+.v {{ font-size:{72 if tall else 80}px; }}
+.type .cur {{ width:0.07em; height:0.9em; margin-left:0.1em; background:var(--amber); box-shadow:0 0 14px rgba(140,155,255,0.9); }}
+.trk {{ border:2px solid var(--line); padding:6px; }}
+.fill.amber {{ background:linear-gradient(90deg, #1520E8, var(--cobalt) 70%, #6E7BFF); filter:drop-shadow(0 0 18px rgba(40,60,255,0.7)); }}
+.fill.ink {{ background:var(--ink); filter:drop-shadow(0 0 12px rgba(200,205,255,0.5)); }}
+.stamp {{ font-family:var(--mono); font-weight:500; color:var(--ink); border:0; background:var(--cobalt); padding:10px 26px;
+  box-shadow:0 0 30px rgba(40,60,255,0.6); text-shadow:none; }}
+.receipt {{ background:#F1F2FA; color:#0A0E8F; border:0; font-family:var(--mono); font-size:{44 if tall else 40}px; box-shadow:0 30px 90px rgba(20,30,200,0.45); }}
+.rhead, .rfoot {{ font-family:var(--mono); font-weight:500; color:#3A40B8; font-size:{34 if tall else 32}px; letter-spacing:0.08em; }}
+.rhead {{ border-bottom:2px dashed #9CA2E0; }} .rfoot {{ border-top:2px dashed #9CA2E0; }}
+.rrow .dots {{ border-bottom:2px dotted #A8ADE6; }}
+.rrow.tot span:last-child {{ color:var(--cobalt); text-shadow:none; }}
+.bubble {{ border:2px solid var(--line); background:rgba(31,43,255,0.12); }}
+.burst {{ background:radial-gradient(circle, rgba(60,80,255,0.40), rgba(40,60,255,0.10) 40%, transparent 68%); }}
+.card {{ border:0; background:var(--cobalt); box-shadow:0 0 60px rgba(31,43,255,0.55); }}
+.card::before {{ content:''; position:absolute; inset:0; background:url('{GRAIN}'); opacity:0.5; }}
+.card .cb {{ display:none; }}
+.card {{ padding:{'52px 48px' if tall else '44px 80px'}; gap:14px; }}
+#t-n {{ color:var(--amber); }}
+.card .arch {{ color:#FFFFFF; text-shadow:0 0 30px rgba(255,255,255,0.35); }}
+.side {{ color:#DDE0FF; }} .vline {{ color:#FFFFFF; }}
+.sweep {{ background:linear-gradient(180deg, transparent, rgba(255,255,255,0.18), transparent); }}
+.frame {{ border:2px solid rgba(140,150,255,0.45); }}
+.frame::after {{ display:none; }}
+.cb {{ border-color:rgba(200,205,255,0.9); width:36px; height:36px; }}
+.cb.tl, .cb.tr, .cb.bl, .cb.br {{ border-width:0; }}
+.cb.tl {{ border-left-width:3px; border-top-width:3px; }} .cb.tr {{ border-right-width:3px; border-top-width:3px; }}
+.cb.bl {{ border-left-width:3px; border-bottom-width:3px; }} .cb.br {{ border-right-width:3px; border-bottom-width:3px; }}
+.hud-l, .hud-bl, .hud-br, .hud-n {{ font-family:var(--mono); font-weight:500; font-size:38px; letter-spacing:0.1em; color:var(--dim); }}
+.hud-l {{ top:22px; }} .hud-bl, .hud-br {{ bottom:20px; }} .hud-n {{ top:{44 + 22 if tall else 40 + 22}px; }}
+.rec {{ background:var(--amber); box-shadow:0 0 14px var(--amber); }}
+.icon {{ filter:drop-shadow(0 0 14px rgba(140,155,255,0.9)); }}
+.icon path:first-child {{ stroke:var(--ink); }}
+#c-hub rect:first-child {{ stroke:var(--amber); }} #c-hub rect:last-child {{ fill:var(--cobalt); }}
+.grain {{ position:absolute; inset:-200px; z-index:60; pointer-events:none; background:url('{GRAIN}'); opacity:0.55; }}
+.vig {{ background:radial-gradient(ellipse at center, transparent 50%, rgba(2,3,12,0.7) 100%); }}
+"""
+
+
+THEMES = ("crt", "blue")
+
+
 def compose_story_html(s: Story, scenes: list[dict[str, Any]], total: float, audio: list[dict[str, Any]],
-                       fmt: str = "landscape") -> str:
+                       fmt: str = "landscape", theme: str = "crt") -> str:
     W, H = FORMATS.get(fmt, FORMATS["landscape"])
     tall = H > W
+    blue = theme == "blue"
+    # Font roles: display (big words), body (sentences), accent (title word, archetype), label (kickers, tags)
+    DF, BF, AF, LF = ("gothic", "gothic", "serif", "mono") if blue else ("px", "term", "px", "px")
+    up_ = (lambda x: x.upper())
+    big = 1.25 if blue else 1.0                     # condensed type can run larger in the same box
+    kick = (lambda i, txt: f"#{i + 1:02d} {txt}") if blue else (lambda i, txt: f"&gt; {txt}")
     count = len(scenes)
     body = []
     CW = 912 if tall else 1580                       # content width inside the frame padding
@@ -243,15 +333,16 @@ def compose_story_html(s: Story, scenes: list[dict[str, Any]], total: float, aud
                  f'data-duration="{sc["length"]}" data-track-index="{i % 2}"')
         hud = f'<div class="hud-n">{i + 1:02d} / {count:02d}</div>'
         if n == "title":
+            WORD2 = "Wrapped" if blue else "WRAPPED"
             letters = lambda w: "".join(f'<span class="ch">{_e(c)}</span>' for c in w)
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
-  <div class="brand" id="b-wrap"><div class="bw ink-glow" {fs('HERMES', 'px', 150 if tall else 210, CW)} id="b-1">{letters('HERMES')}</div>
-  <div class="bw amber-glow" {fs('WRAPPED', 'px', 150 if tall else 210, CW)} id="b-2">{letters('WRAPPED')}</div></div>
-  <div class="sub type" {fs(sc['sub'] + '  ', 'term', 72 if tall else 80, CW)} id="b-sub">{_typed(sc['sub'])}</div></div></section>""")
+  <div class="brand" id="b-wrap"><div class="bw ink-glow" {fs('HERMES', DF, round((150 if tall else 210) * big), CW)} id="b-1">{letters('HERMES')}</div>
+  <div class="bw bw2 amber-glow" {fs(WORD2, AF, round((150 if tall else 210) * big), CW)} id="b-2">{letters(WORD2)}</div></div>
+  <div class="sub type" {fs(sc['sub'] + '  ', BF, 72 if tall else 80, CW)} id="b-sub">{_typed(sc['sub'])}</div></div></section>""")
         elif n == "hook":
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
-  <div class="mega amber-glow" {fs(sc['big'], 'px', 380 if tall else 360, CW)} id="h-big">{_e(sc['big'])}</div>
-  <div class="l1" {fs(sc['line1'], 'term', 96 if tall else 104, CW, 2)} id="h-l1">{_e(sc['line1'])}</div>
+  <div class="mega amber-glow" {fs(sc['big'], DF, round((380 if tall else 360) * big), CW)} id="h-big">{_e(sc['big'])}</div>
+  <div class="l1" {fs(sc['line1'], BF, 96 if tall else 104, CW, 2)} id="h-l1">{_e(sc['line1'])}</div>
   <div class="l2 amber type" id="h-l2">{_typed(sc['line2'])}</div></div></section>""")
         elif n == "scale":
             a, b = sc["a"], sc["b"]
@@ -260,60 +351,61 @@ def compose_story_html(s: Story, scenes: list[dict[str, Any]], total: float, aud
                     + (f'<div class="lane"><span class="who">YOU</span><span class="trk"><span class="fill ink" id="r-b" style="width:{wb}%"></span></span><span class="v ink-glow">{_e(_hours(b))}h</span></div>' if b else "")
                     + "</div>")
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
-  <div class="kicker" id="s-k">&gt; AGENT TIME</div>
-  <div class="l1 big" {fs(sc['line1'], 'term', 104 if tall else 116, CW, 2)} id="s-l1">{_e(sc['line1'])}</div>{bars}
+  <div class="kicker" id="s-k">{kick(i, "AGENT TIME")}</div>
+  <div class="l1 big" {fs(sc['line1'], BF, 104 if tall else 116, CW, 2)} id="s-l1">{_e(sc['line1'])}</div>{bars}
   <div class="l2 dim type" id="s-l2">{_typed(sc['line2'])}</div></div></section>""")
         elif n == "crew":
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
   {_crew_svg(sc["n"], 860 if tall else 900)}
-  <div class="l1" {fs(sc['line1'], 'term', 92 if tall else 100, CW, 2)} id="c-l1">{_e(sc['line1'])}</div>
-  <div class="l1 big amber-glow" {fs(sc['line2'], 'term', 112 if tall else 128, CW, 2)} id="c-l2">{_e(sc['line2'])}</div>
-  <div class="meta" {fs(sc['line3'], 'term', 68 if tall else 72, CW)} id="c-l3">{_e(sc['line3'])}</div></div></section>""")
+  <div class="l1" {fs(sc['line1'], BF, 92 if tall else 100, CW, 2)} id="c-l1">{_e(sc['line1'])}</div>
+  <div class="l1 big amber-glow" {fs(sc['line2'], BF, 112 if tall else 128, CW, 2)} id="c-l2">{_e(sc['line2'])}</div>
+  <div class="meta" {fs(sc['line3'], BF, 68 if tall else 72, CW)} id="c-l3">{_e(sc['line3'])}</div></div></section>""")
         elif n == "clock":
             body.append(f"""<section {attrs}>{hud}<div class="scene-content row2">
   <div class="clockwrap" id="k-clock">{_clock_svg(sc['hours'], sc['peak'], 820 if tall else 820)}</div>
-  <div class="col"><div class="kicker" id="k-k">&gt; YOUR PEAK HOUR</div>
-  <div class="mega2 amber-glow" {fs(sc['hour'].upper(), 'px', 220 if tall else 230, COL)} id="k-l1">{_e(sc['hour'].upper())}</div>
+  <div class="col"><div class="kicker" id="k-k">{kick(i, "YOUR PEAK HOUR")}</div>
+  <div class="mega2 amber-glow" {fs(sc['hour'].upper(), DF, round((220 if tall else 230) * big), COL)} id="k-l1">{_e(sc['hour'].upper())}</div>
   <div class="l2 amber type" id="k-l2">{_typed(sc['line2'])}</div></div></div></section>""")
         elif n == "late":
             bubble = (f'<div class="bubble" id="l-q">&gt; {_e(sc["quote"])}</div>' if sc["quote"]
                       else f'<div class="l2 dim type" id="l-q">{_typed(sc["line2"])}</div>')
             clock_t, _, day = sc["when"].upper().partition(", ")
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">{MOON}
-  <div class="kicker" id="l-l1">&gt; {_e(sc['line1'].upper())}</div>
-  <div class="mega2 ink-glow" {fs(clock_t, 'px', 230 if tall else 230, CW)} id="l-when">{_e(clock_t)}</div>
-  {f'<div class="dayline amber-glow" {fs(day, "px", 96 if tall else 100, CW)} id="l-day">{_e(day)}</div>' if day else ''}{bubble}</div></section>""")
+  <div class="kicker" id="l-l1">{kick(i, _e(sc['line1'].upper()))}</div>
+  <div class="mega2 ink-glow" {fs(clock_t, DF, round((230 if tall else 230) * big), CW)} id="l-when">{_e(clock_t)}</div>
+  {f'<div class="dayline amber-glow" {fs(day, DF, round((96 if tall else 100) * big), CW)} id="l-day">{_e(day)}</div>' if day else ''}{bubble}</div></section>""")
         elif n == "job":
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
-  <div class="kicker" id="j-l">&gt; BIGGEST JOB</div>
-  <div class="jobtitle amber-glow" {fs(sc['title'].upper(), 'px', 140 if tall else 170, CW, 3)} id="j-t">{_e(sc['title'].upper())}</div>
-  <div class="l2" {fs(sc['meta'], 'term', 72 if tall else 80, CW, 2)} id="j-m">{_e(sc['meta'])}</div></div></section>""")
+  <div class="kicker" id="j-l">{kick(i, "BIGGEST JOB")}</div>
+  <div class="jobtitle amber-glow" {fs(sc['title'].upper(), DF, round((140 if tall else 170) * big), CW, 3)} id="j-t">{_e(sc['title'].upper())}</div>
+  <div class="l2" {fs(sc['meta'], BF, 72 if tall else 80, CW, 2)} id="j-m">{_e(sc['meta'])}</div></div></section>""")
         elif n == "tic":
             cell = 420 if tall else 480
-            ssize = F.fit(f"[{sc['word'].upper()}]", "px", 56 if tall else 64, cell - 70, 1, 28)
+            ssize = F.fit(f"[{sc['word'].upper()}]", LF, 56 if tall else 64, cell - 70, 1, 28)
             stamps = "".join(f'<span class="stamp s{k}" style="font-size:{ssize}px">[{_e(sc["word"].upper())}]</span>' for k in range(8))
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
   <div class="stamps" id="t-st">{stamps}</div>
-  <div class="l1 big" {fs(f"You said “{sc['word']}” {sc['count']} times.", 'term', 104 if tall else 116, CW, 2)} id="t-l1">You said “{_e(sc['word'])}” <span class="amber-glow" id="t-n">{sc['count']}</span>&nbsp;times.</div>
+  <div class="l1 big" {fs(f"You said “{sc['word']}” {sc['count']} times.", BF, 104 if tall else 116, CW, 2)} id="t-l1">You said “{_e(sc['word'])}” <span class="amber-glow" id="t-n">{sc['count']}</span>&nbsp;times.</div>
   <div class="l2 dim type" id="t-l2">{_typed(sc['line2'])}</div></div></section>""")
         elif n == "eyes":
             body.append(f"""<section {attrs}>{hud}<div class="scene-content center">
-  <div class="l1 big" {fs(sc['line1'], 'term', 104 if tall else 116, CW, 3)} id="e-l1">{_e(sc['line1'])}</div>
+  <div class="l1 big" {fs(sc['line1'], BF, 104 if tall else 116, CW, 3)} id="e-l1">{_e(sc['line1'])}</div>
   <div class="l2 dim type" id="e-l2">{_typed(sc['line2'])}</div></div></section>""")
         elif n == "receipt":
             rows = "".join(f'<div class="rrow{" tot" if j == 0 else ""}"><span>{_e(k.upper())}</span><span class="dots"></span><span>{_e(v)}</span></div>'
                            for j, (k, v) in enumerate(sc["rows"]))
             body.append(f"""<section {attrs}>{hud}<div class="scene-content row2">
   <div class="receipt" id="p-r"><div class="rhead">RECEIPT · HERMES</div>{rows}<div class="rfoot">THANK YOU FOR YOUR BUSINESS</div></div>
-  <div class="col"><div class="note" {fs(sc['note'], 'term', 92 if tall else 100, RCOL, 3)} id="p-n">{_e(sc['note'])}</div></div></div></section>""")
+  <div class="col"><div class="note" {fs(sc['note'], BF, 92 if tall else 100, RCOL, 3)} id="p-n">{_e(sc['note'])}</div></div></div></section>""")
         elif n == "verdict":
+            ARCH = s.archetype if blue else sc["name_text"]
             body.append(f"""<section {attrs}>{hud}<div class="burst" id="v-burst"></div><div class="scene-content center">
   <div class="l1 dim" id="v-pre">YOU ARE…</div>
   <div class="card" id="v-card"><i class="cb tl"></i><i class="cb tr"></i><i class="cb bl"></i><i class="cb br"></i><div class="sweep" id="v-shine"></div>
-  <div class="arch amber-glow" {fs(sc['name_text'], 'px', 124 if tall else 128, CARD, 3 if tall else 2)} id="v-arch">{_e(sc['name_text'])}</div>
-  {f'<div class="side" {fs(sc["side"], 'term', 68 if tall else 72, CARD)} id="v-side">{_e(sc["side"])}</div>' if sc['side'] else ''}
-  <div class="vline" {fs(sc['line'], 'term', 76 if tall else 84, CARD, 2, 56)} id="v-line">{_e(sc['line'])}</div></div>
-  <div class="meta" {fs(sc['stats'], 'term', 68 if tall else 72, CW)} id="v-stats">{_e(sc['stats'])}</div></div></section>""")
+  <div class="arch amber-glow" {fs(ARCH, AF, round((124 if tall else 128) * (1.1 if blue else 1)), CARD, 3 if tall else 2)} id="v-arch">{_e(ARCH)}</div>
+  {f'<div class="side" {fs(sc["side"], BF, 68 if tall else 72, CARD)} id="v-side">{_e(sc["side"])}</div>' if sc['side'] else ''}
+  <div class="vline" {fs(sc['line'], BF, 76 if tall else 84, CARD, 2, 56)} id="v-line">{_e(sc['line'])}</div></div>
+  <div class="meta" {fs(sc['stats'], BF, 68 if tall else 72, CW)} id="v-stats">{_e(sc['stats'])}</div></div></section>""")
 
     audio_tags = "".join(
         f'<audio id="{_e(a["id"])}" class="clip" src="{_e(a["src"])}" data-start="{a["start"]}" '
@@ -326,14 +418,14 @@ def compose_story_html(s: Story, scenes: list[dict[str, Any]], total: float, aud
     hud_frame = (f'<div class="frame"><i class="cb tl"></i><i class="cb tr"></i><i class="cb bl"></i><i class="cb br"></i>'
                  f'<div class="hud-l">HERMES WRAPPED</div><div class="hud-bl">{_e(s.period_label.upper())}</div>'
                  f'<div class="hud-br"><span class="rec" id="rec"></span>REC</div></div>'
-                 '<div class="scan"></div><div class="vig"></div>')
+                 + ('<div class="grain" id="grain"></div><div class="vig"></div>' if blue else '<div class="scan"></div><div class="vig"></div>'))
     pad = "190px 84px 170px" if tall else "150px 170px 140px"
     css = f"""
 @font-face {{ font-family:'Silkscreen'; src:url('fonts/Silkscreen-Regular.ttf') format('truetype'); font-weight:400; }}
 @font-face {{ font-family:'Silkscreen'; src:url('fonts/Silkscreen-Bold.ttf') format('truetype'); font-weight:700; }}
 @font-face {{ font-family:'VT323'; src:url('fonts/VT323-Regular.ttf') format('truetype'); font-weight:400; }}
 :root {{ --bg:#070604; --ink:#F5EBD6; --dim:#D8CAAC; --faint:#4A4237; --amber:#FFB547; --line:rgba(245,235,214,0.30);
-  --px:'Silkscreen', 'VT323', monospace; --term:'VT323', 'Silkscreen', monospace; }}
+  --px:'Silkscreen', 'VT323', monospace; --term:'VT323', 'Silkscreen', monospace; --lab:'VT323', monospace; --idle:rgba(216,202,172,0.5); }}
 html, body, #stage {{ width:{W}px; height:{H}px; }}
 html, body {{ background:var(--bg); color:var(--ink); font-family:var(--term); }}
 #stage {{ position:relative; overflow:hidden; background:radial-gradient(ellipse at 50% 45%, #15110A 0%, var(--bg) 70%); }}
@@ -415,6 +507,8 @@ html, body {{ background:var(--bg); color:var(--ink); font-family:var(--term); }
   background:repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 2px, transparent 2px 4px); }}
 .vig {{ position:absolute; inset:0; z-index:61; pointer-events:none; background:radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.55) 100%); }}
 """
+    if blue:
+        css += _blue_css(W, H, tall)
     js = """
 (function () {
   window.__timelines = window.__timelines || {};
@@ -433,6 +527,7 @@ html, body {{ background:var(--bg); color:var(--ink); font-family:var(--term); }
     if (cur) { tl.from(cur, { opacity: 0, duration: 0.001 }, t);
       tl.to(cur, { opacity: 0, duration: 0.001, repeat: 9, yoyo: true, repeatDelay: 0.38 }, t + Math.min(1.2, cs.length * 0.035) + 0.2); }
   }
+  if (document.getElementById('grain')) tl.to('#grain', { backgroundPosition: '137px 89px', duration: 0.25, repeat: Math.floor(D.total / 0.25), ease: 'steps(1)' }, 0);
   tl.to('#rec', { opacity: 0.15, duration: 0.001, repeat: Math.floor(D.total / 0.6), yoyo: true, repeatDelay: 0.6 }, 0);
   var s;
   if ((s = sceneIn('title'))) {
@@ -527,7 +622,7 @@ html, body {{ background:var(--bg); color:var(--ink); font-family:var(--term); }
 <html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width={W}, height={H}" />
 <link rel="preload" href="fonts/Silkscreen-Bold.ttf" as="font" crossorigin><link rel="preload" href="fonts/VT323-Regular.ttf" as="font" crossorigin>
 <script src="gsap.min.js"></script><style>{base_css()}{css}</style></head>
-<body><div id="stage" data-composition-id="root" data-start="0" data-duration="{total}" data-width="{W}" data-height="{H}">
+<body class="theme-{theme}"><div id="stage" data-composition-id="root" data-start="0" data-duration="{total}" data-width="{W}" data-height="{H}">
 {''.join(body)}{hud_frame}{audio_tags}
 </div>
 <script id="reel-data" type="application/json">{json.dumps(data)}</script>
@@ -536,7 +631,7 @@ html, body {{ background:var(--bg); color:var(--ink); font-family:var(--term); }
 
 
 def render_story(s: Story, out_dir: str | os.PathLike[str], *, quality: str = "standard", show_cost: bool = True,
-                 fmt: str = "landscape", music: bool = True, show_titles: bool = True) -> Path:
+                 fmt: str = "landscape", music: bool = True, show_titles: bool = True, theme: str = "crt") -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     scenes = plan_scenes(s, show_cost=show_cost, show_titles=show_titles)
@@ -547,6 +642,9 @@ def render_story(s: Story, out_dir: str | os.PathLike[str], *, quality: str = "s
         make_music(out / "music.wav", total, seed=f"{s.start:.0f}{s.archetype}", mood=mood)
         audio.append({"id": "music", "src": "music.wav", "start": 0, "duration": total, "track": 5,
                       "volume": 0.9, "fade_out": 1.5})
-    page = compose_story_html(s, scenes, total, audio, fmt=fmt)
-    return render_html(page, out, data={"story": s.to_dict(), "scenes": scenes, "format": fmt,
+    theme = theme if theme in THEMES else "crt"
+    if theme == "blue":
+        write_grain(out / GRAIN)
+    page = compose_story_html(s, scenes, total, audio, fmt=fmt, theme=theme)
+    return render_html(page, out, data={"story": s.to_dict(), "scenes": scenes, "format": fmt, "theme": theme,
                                                "mood": mood_for(s.archetype, s.peak_hour, s.night_share) if music else None}, quality=quality)

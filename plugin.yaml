@@ -46,6 +46,11 @@ config_schema:
     default: landscape
     choices: [landscape, portrait]
     description: landscape = 16:9, portrait = 9:16 for stories and reels (or say "/wrapped vertical")
+  theme:
+    type: str
+    default: crt
+    choices: [crt, blue]
+    description: crt = glowing amber terminal, blue = navy and cobalt with film grain (or say "/wrapped blue")
   timezone:
     type: str
     default: ""

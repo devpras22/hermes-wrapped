@@ -255,3 +255,20 @@ def test_text_fits_its_box_in_both_formats():
         assert got is not None and len(got) <= lines, (text, size)
         assert all(F.width(line, face, size) <= box for line in got)
     assert F.fit("HERMES", "px", 210, 1580) == 210      # short words keep their full size
+
+
+def test_blue_theme_words_and_page():
+    import hermes_wrapped as P
+    from hermes_wrapped.story import Story
+    from hermes_wrapped.storyvideo import compose_story_html, plan_scenes, _timed
+    assert P._split_theme(["month", "blue", "vertical"]) == ("blue", ["month", "vertical"])
+    assert P._split_theme(["year"]) == (None, ["year"])
+    assert P._theme("nonsense") == "crt"
+    s = Story(start=0, end=1, tz="UTC", sessions=3, asks=6, agent_hours=2.0, wall_hours=1.0, active_days=2,
+              archetype="The Steady Hand", archetype_line="x", period_label="week of Nov 1")
+    sc = plan_scenes(s)
+    page = compose_story_html(s, sc, _timed(sc), [], fmt="portrait", theme="blue")
+    assert 'class="theme-blue"' in page and "Instrument Serif" in page and ">Wrapped<" not in page  # letters are split
+    assert "#03 AGENT TIME" in page or "#02" in page
+    crt = compose_story_html(s, sc, _timed(sc), [], fmt="portrait")
+    assert 'class="theme-crt"' in crt and "Instrument Serif" not in crt

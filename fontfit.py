@@ -10,7 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 
 FONTS = Path(__file__).resolve().parent / "assets" / "fonts"
-FACES = {"px": "Silkscreen-Bold.ttf", "term": "VT323-Regular.ttf"}
+FACES = {"px": "Silkscreen-Bold.ttf", "term": "VT323-Regular.ttf", "gothic": "PathwayGothicOne-Regular.ttf",
+         "serif": "InstrumentSerif-Italic.ttf", "mono": "IBMPlexMono-Medium.ttf"}
 
 
 @lru_cache(maxsize=None)

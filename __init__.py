@@ -2,7 +2,7 @@
 and how much of your time went into keeping it running.
 
 Surfaces:
-  /wrapped [week|month|year|session [id]] [vertical|landscape]   slash command (renders in the background, sends the MP4 to the chat)
+  /wrapped [week|month|year|session [id]] [vertical|landscape] [crt|blue]   slash command (renders in the background, sends the MP4 to the chat)
   wrapped_make                         agent tool ("show me my week with you")
   hermes wrapped ...                   terminal command (week, month, session, schedule, list, doctor)
   post_tool_call hook                  records exact step timing and failures while you work
@@ -64,6 +64,25 @@ FORMAT_ALIASES = {"vertical": "portrait", "portrait": "portrait", "9:16": "portr
                   "landscape": "landscape", "wide": "landscape", "16:9": "landscape", "169": "landscape"}
 
 
+THEME_ALIASES = {"crt": "crt", "terminal": "crt", "amber": "crt", "retro": "crt",
+                 "blue": "blue", "cobalt": "blue", "film": "blue", "navy": "blue"}
+
+
+def _theme(value: Any) -> str:
+    return THEME_ALIASES.get(str(value or "").strip().lower(), "crt")
+
+
+def _split_theme(words: list[str]) -> tuple[str | None, list[str]]:
+    """Pull a theme word (blue, crt...) out of the arguments; it can go anywhere."""
+    theme, rest = None, []
+    for w in words:
+        if w.lower() in THEME_ALIASES:
+            theme = THEME_ALIASES[w.lower()]
+        else:
+            rest.append(w)
+    return theme, rest
+
+
 def _fmt(value: Any) -> str:
     return FORMAT_ALIASES.get(str(value or "").strip().lower(), "landscape")
 
@@ -71,19 +90,22 @@ def _fmt(value: Any) -> str:
 QUALITIES = ("draft", "standard", "high")
 
 
-def make_wrapped(days: int = 7, *, quality: str | None = None, fmt: str | None = None) -> tuple[Path, str]:
+def make_wrapped(days: int = 7, *, quality: str | None = None, fmt: str | None = None,
+                 theme: str | None = None) -> tuple[Path, str]:
     db = _db_path()
     fmt = _fmt(fmt or _cfg("format", "landscape"))
+    theme = _theme(theme or _cfg("theme", "crt"))
     period = wrapped.load_period(days, db)
     st = _story.load_story(days, db or str(store.hermes_home() / "state.db"), upkeep_pct=period.upkeep_pct,
                            quotes=_bool(_cfg("quotes", False)), tz_name=str(_cfg("timezone", "") or ""))
     stamp = time.strftime("%Y%m%d")
-    tag = "-vertical" if fmt == "portrait" else ""
+    tag = ("-vertical" if fmt == "portrait" else "") + ("-blue" if theme == "blue" else "")
     work = store.data_dir() / "renders" / f"wrapped-{days}d-{stamp}{tag}"
     q = quality or str(_cfg("quality", "standard"))  # an explicit --quality beats the setting
     q = q if q in QUALITIES else "standard"
     mp4 = render_story(st, work, quality=q, show_cost=_bool(_cfg("show_cost", True)),
-                       fmt=fmt, music=_bool(_cfg("music", True)), show_titles=_bool(_cfg("show_titles", True)))
+                       fmt=fmt, music=_bool(_cfg("music", True)), show_titles=_bool(_cfg("show_titles", True)),
+                       theme=theme)
     final = store.video_dir() / f"hermes-wrapped-{days}d-{stamp}{tag}.mp4"
     final.write_bytes(mp4.read_bytes())
     shutil.rmtree(work, ignore_errors=True)  # keep only the MP4
@@ -200,7 +222,8 @@ _RENDER_LOCK = threading.Lock()  # one render at a time: each one runs a headles
 
 def _wrapped_command(ctx):
     def handler(raw_args: str, *, session_id: str = "", platform: str = "", source: Any = None, **_: Any) -> str:
-        mode, days, sid, fmt = _parse((raw_args or "").split())
+        theme, words = _split_theme((raw_args or "").split())
+        mode, days, sid, fmt = _parse(words)
         if mode == "session" and not sid:
             sid = session_id or None
         chat = getattr(source, "chat_id", None) if source is not None else None
@@ -213,7 +236,7 @@ def _wrapped_command(ctx):
         def render() -> tuple[Path, str]:
             if mode == "session":
                 return make_session_reel(sid), "This session, as a video"
-            return make_wrapped(days, fmt=fmt)
+            return make_wrapped(days, fmt=fmt, theme=theme)
 
         if not _RENDER_LOCK.acquire(blocking=False):
             return "A Wrapped is already rendering. It'll land in a minute; try again after that."
@@ -267,6 +290,7 @@ TOOL_SCHEMA = {
             "scope": {"type": "string", "enum": ["week", "month", "year", "session"], "description": "Default: the user's period setting (week if unset)."},
             "session_id": {"type": "string", "description": "For scope=session: id or prefix; omit for the latest."},
             "format": {"type": "string", "enum": ["landscape", "portrait"], "description": "portrait = 9:16 for stories/reels. Default: the user's setting."},
+            "theme": {"type": "string", "enum": ["crt", "blue"], "description": "crt = amber terminal, blue = navy and cobalt film look. Default: the user's setting."},
         },
         "required": [],
         "additionalProperties": False,
@@ -283,7 +307,7 @@ def _tool_handler(args: dict[str, Any], **kw: Any) -> str:
             path = make_session_reel(args.get("session_id") or None)
             return json.dumps({"ok": True, "video": str(path), "deliver": f"MEDIA:{path}"})
         days = PERIODS.get(str(args.get("scope") or ""), 0) or _default_days()
-        path, summary = make_wrapped(days, fmt=args.get("format"))
+        path, summary = make_wrapped(days, fmt=args.get("format"), theme=args.get("theme"))
         return json.dumps({"ok": True, "video": str(path), "deliver": f"MEDIA:{path}", "summary": summary})
     except Exception as exc:
         return json.dumps({"ok": False, "error": str(exc)})
@@ -309,6 +333,7 @@ def _cli_setup(sub) -> None:
         p.add_argument("--media-line", action="store_true", help="Print summary + MEDIA: line (for no-agent cron delivery)")
         p.add_argument("--vertical", action="store_true", help="9:16 for stories and reels (default: your `format` setting)")
         p.add_argument("--landscape", action="store_true", help="16:9")
+        p.add_argument("--theme", default=None, choices=["crt", "blue"], help="Look of the video (default: your `theme` setting)")
     p = sp.add_parser("session", help="One session as a short video")
     p.add_argument("session", nargs="?", default="latest")
     p.add_argument("--quality", default="standard", choices=["draft", "standard", "high"])
@@ -366,7 +391,7 @@ def _cli(args) -> int:
         return 0
     days = PERIODS.get(cmd or "", 0) or _default_days()
     fmt = "portrait" if getattr(args, "vertical", False) else ("landscape" if getattr(args, "landscape", False) else None)
-    path, summary = make_wrapped(days, quality=getattr(args, "quality", None), fmt=fmt)
+    path, summary = make_wrapped(days, quality=getattr(args, "quality", None), fmt=fmt, theme=getattr(args, "theme", None))
     if getattr(args, "media_line", False):
         print(f"{summary}\nMEDIA:{path}")
     else:
@@ -387,7 +412,7 @@ def register(ctx) -> None:
         "wrapped",
         _wrapped_command(ctx),
         description="Your week with Hermes as a video: what it did, what it cost, how much was upkeep",
-        args_hint="[week | month | year | session [id]] [vertical | landscape]",
+        args_hint="[week | month | year | session [id]] [vertical | landscape] [crt | blue]",
     )
     ctx.register_tool(
         name="wrapped_make",

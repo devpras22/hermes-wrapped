@@ -6,3 +6,6 @@ Third-party components:
 - Renders with HyperFrames by HeyGen (Apache-2.0), run at render time via `npx hyperframes@0.8.217`; not bundled.
 - Silkscreen (assets/fonts/Silkscreen-*.ttf), The Silkscreen Project Authors, SIL Open Font License 1.1 (assets/fonts/OFL-Silkscreen.txt)
 - VT323 (assets/fonts/VT323-Regular.ttf), The VT323 Project Authors, SIL Open Font License 1.1 (assets/fonts/OFL-VT323.txt)
+- Pathway Gothic One (assets/fonts/PathwayGothicOne-Regular.ttf), The Pathway Gothic Project Authors, SIL Open Font License 1.1 (assets/fonts/OFL-PathwayGothicOne.txt)
+- Instrument Serif (assets/fonts/InstrumentSerif-Italic.ttf), The Instrument Serif Project Authors, SIL Open Font License 1.1 (assets/fonts/OFL-InstrumentSerif.txt)
+- IBM Plex Mono (assets/fonts/IBMPlexMono-*.ttf), IBM Corp., SIL Open Font License 1.1 (assets/fonts/OFL-IBMPlexMono.txt)

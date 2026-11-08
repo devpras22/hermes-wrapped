@@ -16,7 +16,7 @@ It tells the story of your week from your own records:
 
 Scenes with nothing interesting to say are skipped, so a quiet week makes a shorter video.
 
-**Zero tokens, every time.** Every number, the archetype and every line are computed by code from your records: same week, same video, no model calls. The soundtrack is synthesized on your machine for each week (no bundled audio, no downloads). Landscape (16:9) or vertical (9:16) for stories and reels, styled like a Hermes release: a glowing CRT terminal with pixel type.
+**Zero tokens, every time.** Every number, the archetype and every line are computed by code from your records: same week, same video, no model calls. The soundtrack is synthesized on your machine for each week (no bundled audio, no downloads). Landscape (16:9) or vertical (9:16) for stories and reels, in two looks taken from Hermes's own releases: `crt` (a glowing amber terminal with pixel type) and `blue` (navy and cobalt with film grain and an italic serif).
 
 ## Why a plugin, not a prompt
 
@@ -49,6 +49,7 @@ In any chat:
 /wrapped year             # your last 365 days
 /wrapped month vertical   # any period, 9:16 for stories and reels
 /wrapped year landscape   # or 16:9, whatever your default is
+/wrapped blue             # the navy and cobalt look (or `crt`, the default)
 /wrapped session [id]     # one session as a short video
 ```
 
@@ -59,7 +60,7 @@ From the terminal:
 ```bash
 hermes wrapped week [--vertical] [--send telegram]
 hermes wrapped month
-hermes wrapped year --vertical
+hermes wrapped year --vertical --theme blue
 hermes wrapped session <id>
 hermes wrapped schedule --deliver telegram --when "0 18 * * 0"
 hermes wrapped list
@@ -86,6 +87,7 @@ Under `plugins.entries.hermes-wrapped.settings` in `config.yaml`:
 |---|---|---|
 | `show_cost` | `true` | Show what the week cost. Turn off before posting publicly if you prefer. |
 | `music` | `true` | Add the generated soundtrack. |
+| `theme` | `crt` | `crt` (amber terminal) or `blue` (navy, cobalt, film grain). Or ask per video: `/wrapped blue`. |
 | `period` | `week` | What a bare `/wrapped` covers: `week`, `month` or `year`. |
 | `format` | `landscape` | `landscape` (16:9) or `portrait` (9:16). Or ask per video: `/wrapped vertical`. |
 | `timezone` | `""` | IANA name such as `America/New_York` for the clock scenes. Empty uses Hermes's own `timezone` setting. |
@@ -99,7 +101,7 @@ Times use the plugin's `timezone` setting, then Hermes's own (`timezone` in `con
 
 - **Reads outside plugin data:** your session history (`state.db`), read-only, through `hermes_state.SessionDB` and a read-only SQLite connection. Nothing leaves your machine unless you deliver a video.
 - **Shell commands / subprocesses:** `npx --yes hyperframes@0.8.217 render` (pinned) to render, `hermes send` to deliver. `hermes wrapped schedule` runs `hermes cron create`.
-- **Third-party network calls:** the first render downloads the HyperFrames CLI from npm (`hyperframes@0.8.217` is pinned; its own dependencies are resolved by npm) and a headless Chrome build chosen by HyperFrames. The fonts (Silkscreen and VT323, SIL Open Font License) ship in `assets/fonts`, so nothing is fetched for type. No model or TTS calls. No telemetry.
+- **Third-party network calls:** the first render downloads the HyperFrames CLI from npm (`hyperframes@0.8.217` is pinned; its own dependencies are resolved by npm) and a headless Chrome build chosen by HyperFrames. The fonts (Silkscreen, VT323, Pathway Gothic One, Instrument Serif and IBM Plex Mono, all SIL Open Font License) ship in `assets/fonts`, so nothing is fetched for type. No model or TTS calls. No telemetry.
 - **Writes:** tool-timing events to `~/.hermes/plugin-data/hermes-wrapped/events.db` (kept 30 days), a temporary render folder under the same directory (deleted after each render), MP4s to `~/.hermes/cache/videos/`, and, only if you run `hermes wrapped schedule`, one script at `~/.hermes/scripts/hermes-wrapped-weekly.sh`.
 - **Background work:** in messaging apps, `/wrapped` renders in a background thread so the chat isn't blocked, then sends the video with `hermes send`. In the CLI, TUI and desktop app it renders in place and answers with the video. One render runs at a time.
 - **Credentials:** none.

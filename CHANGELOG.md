@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New `blue` theme from Hermes's website and X trailers: navy and cobalt, film grain, tall condensed type, italic serif for the title and archetype, `#03` mono labels. Pick it with `/wrapped blue`, `--theme blue` or the `theme` setting; `crt` stays the default.
+
 ## 0.1.0 (2026-11-08)
 
 First release, for the Hermes Agent Plugin Hackathon.
