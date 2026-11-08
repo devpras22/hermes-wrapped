@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+demo-*.mp4
+mood-sampler.mp3
+*.mp4
+*.wav

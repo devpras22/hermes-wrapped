@@ -1,0 +1,56 @@
+name: hermes-wrapped
+version: "0.1.0"
+manifest_version: 2
+description: >-
+  Spotify Wrapped for your agent: your week with Hermes as a 40-second video with its own
+  soundtrack, delivered every Sunday. Hours Hermes worked vs. hours you watched, peak agents at
+  once, your peak hour, latest message, biggest job, verbal tic, what it cost, how much went into
+  upkeep, and your archetype (The Night Shift Manager, The 2am Debugger...). Computed by code from
+  Hermes's own records: zero tokens by default, music synthesized locally, secrets stripped.
+author: Pras Devadoss
+license: MIT
+homepage: https://github.com/devpras22/hermes-wrapped
+tags: [video, recap, analytics, wrapped, hyperframes]
+requires_hermes: ">=0.22.0"
+provides_tools: [wrapped_make]
+provides_hooks: [post_tool_call]
+external_dependencies:
+  - node>=22
+  - npx
+  - ffmpeg
+config_schema:
+  quality:
+    type: str
+    default: standard
+    choices: [draft, standard, high]
+    description: Render quality for /wrapped videos
+  show_cost:
+    type: bool
+    default: true
+    description: Show what the week cost (turn off before posting publicly if you prefer)
+  show_titles:
+    type: bool
+    default: true
+    description: Show the name of your biggest project (secrets, paths and domains are always removed)
+  music:
+    type: bool
+    default: true
+    description: Add the generated soundtrack (made on your machine, no downloads)
+  period:
+    type: str
+    default: week
+    choices: [week, month, year]
+    description: What a bare /wrapped covers. You can always say "/wrapped month" or "/wrapped year"
+  format:
+    type: str
+    default: landscape
+    choices: [landscape, portrait]
+    description: landscape = 16:9, portrait = 9:16 for stories and reels (or say "/wrapped vertical")
+  timezone:
+    type: str
+    default: ""
+    description: IANA timezone for the clock scenes, e.g. America/New_York. Empty = Hermes's own timezone setting
+  quotes:
+    type: bool
+    default: false
+    description: Show your latest late-night message, only if it is short and names nobody

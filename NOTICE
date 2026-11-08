@@ -1,0 +1,8 @@
+Hermes Wrapped
+Copyright (c) 2026 Pras Devadoss. MIT licensed (see LICENSE).
+
+Third-party components:
+- GSAP 3.14.2 (assets/gsap.min.js), GreenSock, GSAP Standard License, https://gsap.com/standard-license
+- Renders with HyperFrames by HeyGen (Apache-2.0), run at render time via `npx hyperframes@0.8.217`; not bundled.
+- Silkscreen (assets/fonts/Silkscreen-*.ttf), The Silkscreen Project Authors, SIL Open Font License 1.1 (assets/fonts/OFL-Silkscreen.txt)
+- VT323 (assets/fonts/VT323-Regular.ttf), The VT323 Project Authors, SIL Open Font License 1.1 (assets/fonts/OFL-VT323.txt)
