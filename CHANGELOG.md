@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Desktop app: `/wrapped` now answers at once and the finished video plays in the same chat (handed over with `inject_message`; needs `allow_gateway_injection: true`). Fixes the 30-second `slash.exec` timeout and Desktop sessions (platform `local`) being treated as a messaging chat.
+- One render at a time across processes, a video rendered today is reused, and oversized blue renders are re-encoded to about 20 MB.
+- `wrapped_make` description tells the agent to call it for any 'wrapped' request and how to map week/month/year, vertical and blue.
 - New `blue` theme from Hermes's website and X trailers: navy and cobalt, film grain, tall condensed type, italic serif for the title and archetype, `#03` mono labels. Pick it with `/wrapped blue`, `--theme blue` or the `theme` setting; `crt` stays the default.
 
 ## 0.1.0 (2026-11-08)

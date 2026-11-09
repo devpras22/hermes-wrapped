@@ -283,6 +283,64 @@ class _SharedLock:
 _RENDER_LOCK = _SharedLock()  # one render at a time: each one runs a headless Chrome for minutes
 
 
+LOCAL_PLATFORMS = ("local", "cli", "tui", "desktop", "acp")  # Desktop sessions report platform "local"
+
+
+def _ready_message(caption: str, path: Path) -> str:
+    """What the finished video is handed to the chat as. Only an agent reply renders MEDIA: as a player in
+    Desktop, so the message asks for that reply, word for word."""
+    return ("[Hermes Wrapped] The video is ready. Reply with exactly the two lines below and nothing else, "
+            f"so it plays here:\n{caption}\nMEDIA:{path}")
+
+
+def _local_wrapped(ctx, render, hit: Path | None, *, mode: str, days: int, theme: str | None, session_key: str) -> str:
+    """Desktop, TUI and CLI. A slash command there must answer within ~30s (Desktop runs it a second time on a
+    timeout) and its answer is plain text, so: answer now, render in the background, then hand the video to
+    this chat with inject_message, keyed to the session saved here (a background thread has no session of
+    its own). Needs plugins.entries.hermes-wrapped.allow_gateway_injection: true."""
+    what = "this session" if mode == "session" else f"your {wrapped._period_word(days)}"
+    caption = "This session, as a video" if mode == "session" else f"Your {wrapped._period_word(days)} with Hermes"
+
+    def deliver(path: Path) -> None:
+        msg = _ready_message(caption, path)
+        try:
+            ok = ctx.inject_message(msg, session_key=session_key) if session_key else ctx.inject_message(msg)
+        except Exception:
+            log.warning("hermes-wrapped: inject_message failed", exc_info=True)
+            ok = False
+        if not ok:
+            log.warning("hermes-wrapped: could not hand the video to session %r (is allow_gateway_injection "
+                        "true for hermes-wrapped?). It is saved at %s", session_key, path)
+
+    if hit:
+        # Rendered earlier today: hand it over right away (after this reply has been shown).
+        threading.Timer(1.0, deliver, args=(hit,)).start()
+        return f"🎬 {what.capitalize()} is already rendered. It'll play here in a moment."
+
+    if not _RENDER_LOCK.acquire(blocking=False):
+        return "A Wrapped is already rendering. It'll land in the chat that asked for it; try again after that."
+
+    def work() -> None:
+        try:
+            path, _summary = render()
+        except Exception as exc:
+            log.warning("hermes-wrapped: render failed: %s", exc)
+            try:
+                ctx.inject_message(f"[Hermes Wrapped] The video couldn't render: {exc}. Tell me in one line.",
+                                   session_key=session_key) if session_key else None
+            except Exception:
+                pass
+            return
+        finally:
+            _RENDER_LOCK.release()
+        deliver(path)
+
+    # Not a daemon: a gateway shutting down waits for the video instead of killing it mid-render.
+    threading.Thread(target=contextvars.copy_context().run, args=(work,), name="hermes-wrapped").start()
+    slow = " (the blue theme takes longer)" if theme == "blue" else ""
+    return f"🎬 Rendering {what}. It takes a few minutes{slow}; the video will play right here when it's done."
+
+
 def _wrapped_command(ctx):
     def handler(raw_args: str, *, session_id: str = "", platform: str = "", source: Any = None, session_key: str = "", **_: Any) -> str:
         theme, words = _split_theme((raw_args or "").split())
@@ -293,7 +351,7 @@ def _wrapped_command(ctx):
         thread = getattr(source, "thread_id", None) if source is not None else None
         plat = platform or (getattr(getattr(source, "platform", None), "value", "") if source is not None else "")
         target = None
-        if plat and chat and plat not in ("cli", "tui", "desktop", "acp"):
+        if plat and chat and plat not in LOCAL_PLATFORMS:
             target = f"{plat}:{chat}" + (f":{thread}" if thread else "")
 
         def render() -> tuple[Path, str]:
@@ -317,16 +375,8 @@ def _wrapped_command(ctx):
                 return None
 
         hit = cached()
-        what = "this session" if mode == "session" else f"my {wrapped._period_word(days)}"
-        scope = "session" if mode == "session" else wrapped._period_word(days)
-        fmt_w = "portrait (9:16)" if fmt == "portrait" else "landscape"
-        asked = (f"Use the wrapped_make tool: scope {scope}" + (f", format {fmt_w.split()[0]}" if fmt == "portrait" else "")
-                 + (f", theme {theme}" if theme else "") + ". Post the video it returns.")
         if not target:
-            # Desktop/CLI/TUI: slash-command output is plain text and a slash command times out after ~30s,
-            # so a video can't be delivered from here. The agent tool can: it replies with the video itself.
-            return (f"🎬 {'Your video is saved. ' if hit else ''}On desktop, paste this in the chat: \"{asked}\" "
-                    "I'll " + ("post it straight away." if hit else "render it and post the video right here when it's done."))
+            return _local_wrapped(ctx, render, hit, mode=mode, days=days, theme=theme, session_key=session_key)
         if hit:
             cap = "This session, as a video" if mode == "session" else f"Your {wrapped._period_word(days)} with Hermes"
             return f"{cap}\nMEDIA:{hit}"
@@ -360,11 +410,13 @@ def _wrapped_command(ctx):
 TOOL_SCHEMA = {
     "name": "wrapped_make",
     "description": (
-        "Render Hermes Wrapped: a short MP4 recap of the past week or month (what Hermes did, what it cost, "
-        "and how much time went into upkeep of Hermes itself), or of one session. Built from recorded "
-        "session data, no model calls. Use when the user asks for their Wrapped, a recap, a weekly "
-        "summary video, or 'how much have you done for me'. Returns a MEDIA: path; put it in your reply "
-        "so the video is delivered, plus the text summary."
+        "Render Hermes Wrapped: a short MP4 recap of the past week, month or year (what Hermes did, what it "
+        "cost, how much went into upkeep of Hermes itself), or of one session. Built from recorded session "
+        "data, no model calls. Call it whenever the user mentions 'wrapped' or asks for a recap or summary "
+        "video; do not ask clarifying questions, the defaults are fine. Map their words: week/month/year -> "
+        "scope, vertical/9:16/story -> format portrait, blue -> theme blue (e.g. 'show wrapped month vertical "
+        "blue' -> scope month, format portrait, theme blue). Rendering takes a few minutes. Returns a MEDIA: "
+        "path; put that line in your reply so the video plays, plus the text summary."
     ),
     "parameters": {
         "type": "object",

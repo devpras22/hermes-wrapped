@@ -272,3 +272,32 @@ def test_blue_theme_words_and_page():
     assert "#03 AGENT TIME" in page or "#02" in page
     crt = compose_story_html(s, sc, _timed(sc), [], fmt="portrait")
     assert 'class="theme-crt"' in crt and "Instrument Serif" not in crt
+
+
+def test_desktop_wrapped_answers_fast_and_hands_video_to_session(tmp_path):
+    import threading
+    import time as _t
+    import hermes_wrapped as P
+    sent = []
+
+    class Ctx:
+        def inject_message(self, content, role="user", *, session_key=None, origin=None):
+            sent.append((session_key, content))
+            return True
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x" * 20000)
+    started = _t.time()
+    reply = P._local_wrapped(Ctx(), lambda: (video, "summary"), None, mode="wrapped", days=7, theme="blue",
+                             session_key="sess-1")
+    assert _t.time() - started < 1 and "Rendering your week" in reply and "blue" in reply
+    for th in threading.enumerate():
+        if th.name == "hermes-wrapped":
+            th.join(5)
+    assert sent and sent[0][0] == "sess-1" and f"MEDIA:{video}" in sent[0][1]
+    assert not P._RENDER_LOCK.locked()
+    # Already rendered today: no render, delivered right away
+    sent.clear()
+    reply = P._local_wrapped(Ctx(), lambda: 1 / 0, video, mode="wrapped", days=30, theme=None, session_key="sess-2")
+    _t.sleep(1.3)
+    assert "already rendered" in reply and sent[0][0] == "sess-2"
+    assert "local" in P.LOCAL_PLATFORMS
