@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 - Desktop app: `/wrapped` now answers at once and the finished video plays in the same chat (handed over with `inject_message`; needs `allow_gateway_injection: true`). Fixes the 30-second `slash.exec` timeout and Desktop sessions (platform `local`) being treated as a messaging chat.
 - One render at a time across processes, a video rendered today is reused, and oversized blue renders are re-encoded to about 20 MB.
