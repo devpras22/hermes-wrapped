@@ -29,6 +29,23 @@ Scenes with nothing interesting to say are skipped, so a quiet week makes a shor
 | Every week | You have to remember to ask | `hermes wrapped schedule` adds a no-agent cron job that delivers it to Telegram (or anywhere) every Sunday |
 | Same data, same video | No | Yes |
 
+## Quick reference
+
+**A bare `/wrapped` gives you:** your last 7 days, landscape (16:9), CRT amber-terminal theme. Change those defaults with the `period`, `format` and `theme` settings below.
+
+| You type | You get |
+|---|---|
+| `/wrapped` | week, landscape, CRT |
+| `/wrapped month` / `/wrapped year` | last 30 / 365 days (also `7d`, `14d`... any 1-365) |
+| `/wrapped vertical` | 9:16 for stories and reels (`landscape` for 16:9) |
+| `/wrapped blue` | navy and cobalt theme with film grain (`crt` for amber) |
+| `/wrapped month vertical blue` | any combination; words can go in any order |
+| `/wrapped session [id]` | one session as a short video (latest if no id) |
+
+**Choosing a theme:** say `crt` or `blue` in the command for that video, or set `theme` in `config.yaml` to change your default.
+
+**What to expect:** a first render takes a few minutes (it draws every frame in headless Chrome). The first `/wrapped` replies "Rendering..."; run the same command again and the video appears instantly. The blue theme and the year period are the slowest; use `quality: draft` for faster previews.
+
 ## Install
 
 ```bash
@@ -103,7 +120,7 @@ Times use the plugin's `timezone` setting, then Hermes's own (`timezone` in `con
 - **Shell commands / subprocesses:** `npx --yes hyperframes@0.8.217 render` (pinned) to render, `hermes send` to deliver. `hermes wrapped schedule` runs `hermes cron create`.
 - **Third-party network calls:** the first render downloads the HyperFrames CLI from npm (`hyperframes@0.8.217` is pinned; its own dependencies are resolved by npm) and a headless Chrome build chosen by HyperFrames. The fonts (Silkscreen, VT323, Pathway Gothic One, Instrument Serif and IBM Plex Mono, all SIL Open Font License) ship in `assets/fonts`, so nothing is fetched for type. No model or TTS calls. No telemetry.
 - **Writes:** tool-timing events to `~/.hermes/plugin-data/hermes-wrapped/events.db` (kept 30 days), a temporary render folder under the same directory (deleted after each render), MP4s to `~/.hermes/cache/videos/`, and, only if you run `hermes wrapped schedule`, one script at `~/.hermes/scripts/hermes-wrapped-weekly.sh`.
-- **Background work:** in messaging apps, `/wrapped` renders in a background thread so the chat isn't blocked, then sends the video with `hermes send`. In the CLI, TUI and desktop app it renders in place and answers with the video. One render runs at a time.
+- **Background work:** `/wrapped` always renders in a background thread so the chat is never blocked (desktop slash commands time out after about 30 seconds). In messaging apps the video is sent with `hermes send` when it is done. In the CLI, TUI and desktop app a slash command cannot show a video, so `/wrapped` tells you to ask in chat ("show wrapped month vertical blue") and the agent calls `wrapped_make`, which renders (or returns today's saved video) and replies with the video. A cross-process file lock (`render.lock`) means only one render runs at a time, however many sessions ask.
 - **Credentials:** none.
 - **Privacy on screen:** in the weekly video, the biggest project's name is shown only after secrets, paths, IPs, logins and domains are removed (turn it off with `show_titles: false`), and your messages are never shown unless `quotes` is on. `/wrapped session` is different: it shows that session's first request, its step labels and the final answer, with secrets and home paths stripped.
 

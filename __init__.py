@@ -90,6 +90,27 @@ def _fmt(value: Any) -> str:
 QUALITIES = ("draft", "standard", "high")
 
 
+def _shrink(src: Path) -> Path:
+    """Re-encode a render to a sane size. The blue theme's animated film grain is noise, which H.264 cannot
+    compress at crf 18: a 45s video came out at ~290 MB (50 Mbps). Capped at 4 Mbps it is ~20 MB."""
+    try:
+        if src.stat().st_size < 25 * 1024 * 1024:
+            return src
+        tmp = src.with_suffix(".small.mp4")
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(src), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+             "-maxrate", "4M", "-bufsize", "8M", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(tmp)],
+            capture_output=True, text=True, timeout=600, check=False)
+        if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 10_000:
+            tmp.replace(src)
+        else:
+            log.warning("hermes-wrapped: shrink failed: %s", (r.stderr or "")[-300:])
+            tmp.unlink(missing_ok=True)
+    except Exception:
+        log.warning("hermes-wrapped: shrink error", exc_info=True)
+    return src
+
+
 def make_wrapped(days: int = 7, *, quality: str | None = None, fmt: str | None = None,
                  theme: str | None = None) -> tuple[Path, str]:
     db = _db_path()
@@ -108,6 +129,7 @@ def make_wrapped(days: int = 7, *, quality: str | None = None, fmt: str | None =
                        theme=theme)
     final = store.video_dir() / f"hermes-wrapped-{days}d-{stamp}{tag}.mp4"
     final.write_bytes(mp4.read_bytes())
+    _shrink(final)
     shutil.rmtree(work, ignore_errors=True)  # keep only the MP4
     return final, story_summary(st, period, show_cost=_bool(_cfg("show_cost", True)))
 
@@ -217,11 +239,52 @@ def _on_post_tool_call(**kw: Any) -> None:
 
 # ---------------------------------------------------------------- slash command
 
-_RENDER_LOCK = threading.Lock()  # one render at a time: each one runs a headless Chrome for a minute or two
+class _SharedLock:
+    """One render at a time across ALL Hermes processes (desktop sessions, gateway, CLI) via flock."""
+
+    def __init__(self) -> None:
+        self._t = threading.Lock()
+        self._fh = None
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        import fcntl
+        if not self._t.acquire(blocking, timeout):
+            return False
+        try:
+            fh = open(store.data_dir() / "render.lock", "w")
+            end = time.time() + (timeout if timeout and timeout > 0 else 0)
+            while True:
+                try:
+                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self._fh = fh
+                    return True
+                except OSError:
+                    if not blocking or (timeout and timeout > 0 and time.time() >= end):
+                        fh.close()
+                        self._t.release()
+                        return False
+                    time.sleep(1)
+        except Exception:
+            self._t.release()
+            raise
+
+    def release(self) -> None:
+        try:
+            if self._fh:
+                self._fh.close()  # closing drops the flock
+                self._fh = None
+        finally:
+            self._t.release()
+
+    def locked(self) -> bool:
+        return self._t.locked()
+
+
+_RENDER_LOCK = _SharedLock()  # one render at a time: each one runs a headless Chrome for minutes
 
 
 def _wrapped_command(ctx):
-    def handler(raw_args: str, *, session_id: str = "", platform: str = "", source: Any = None, **_: Any) -> str:
+    def handler(raw_args: str, *, session_id: str = "", platform: str = "", source: Any = None, session_key: str = "", **_: Any) -> str:
         theme, words = _split_theme((raw_args or "").split())
         mode, days, sid, fmt = _parse(words)
         if mode == "session" and not sid:
@@ -238,19 +301,38 @@ def _wrapped_command(ctx):
                 return make_session_reel(sid), "This session, as a video"
             return make_wrapped(days, fmt=fmt, theme=theme)
 
-        if not _RENDER_LOCK.acquire(blocking=False):
-            return "A Wrapped is already rendering. It'll land in a minute; try again after that."
-
-        if not target:
-            # Local surfaces (CLI, TUI, desktop): render right here and answer with the file,
-            # so the result can't get lost when no messaging gateway is running.
+        def cached() -> Path | None:
+            # Same period/theme/format rendered today (or same session): reuse it, no re-render.
             try:
-                path, caption = render()
-                return f"{caption}\nMEDIA:{path}"
-            except Exception as exc:
-                return f"Hermes Wrapped couldn't render: {exc}"
-            finally:
-                _RENDER_LOCK.release()
+                if mode == "session":
+                    full = timeline.resolve_session_id(_db_path(), sid)
+                    f = store.video_dir() / f"hermes-session-{full[:12]}.mp4" if full else None
+                else:
+                    f_ = _fmt(fmt or _cfg("format", "landscape"))
+                    t_ = _theme(theme or _cfg("theme", "crt"))
+                    tag = ("-vertical" if f_ == "portrait" else "") + ("-blue" if t_ == "blue" else "")
+                    f = store.video_dir() / f"hermes-wrapped-{days}d-{time.strftime('%Y%m%d')}{tag}.mp4"
+                return f if f and f.exists() and f.stat().st_size > 10_000 else None
+            except Exception:
+                return None
+
+        hit = cached()
+        what = "this session" if mode == "session" else f"my {wrapped._period_word(days)}"
+        scope = "session" if mode == "session" else wrapped._period_word(days)
+        fmt_w = "portrait (9:16)" if fmt == "portrait" else "landscape"
+        asked = (f"Use the wrapped_make tool: scope {scope}" + (f", format {fmt_w.split()[0]}" if fmt == "portrait" else "")
+                 + (f", theme {theme}" if theme else "") + ". Post the video it returns.")
+        if not target:
+            # Desktop/CLI/TUI: slash-command output is plain text and a slash command times out after ~30s,
+            # so a video can't be delivered from here. The agent tool can: it replies with the video itself.
+            return (f"🎬 {'Your video is saved. ' if hit else ''}On desktop, paste this in the chat: \"{asked}\" "
+                    "I'll " + ("post it straight away." if hit else "render it and post the video right here when it's done."))
+        if hit:
+            cap = "This session, as a video" if mode == "session" else f"Your {wrapped._period_word(days)} with Hermes"
+            return f"{cap}\nMEDIA:{hit}"
+
+        if not _RENDER_LOCK.acquire(blocking=False):
+            return "A Wrapped is already rendering. Run /wrapped again in a minute and it will be here."
 
         def work() -> None:
             try:
@@ -307,6 +389,12 @@ def _tool_handler(args: dict[str, Any], **kw: Any) -> str:
             path = make_session_reel(args.get("session_id") or None)
             return json.dumps({"ok": True, "video": str(path), "deliver": f"MEDIA:{path}"})
         days = PERIODS.get(str(args.get("scope") or ""), 0) or _default_days()
+        f_ = _fmt(args.get("format") or _cfg("format", "landscape"))
+        t_ = _theme(args.get("theme") or _cfg("theme", "crt"))
+        tag = ("-vertical" if f_ == "portrait" else "") + ("-blue" if t_ == "blue" else "")
+        saved = store.video_dir() / f"hermes-wrapped-{days}d-{time.strftime('%Y%m%d')}{tag}.mp4"
+        if saved.exists() and saved.stat().st_size > 10_000:  # already rendered today: no re-render
+            return json.dumps({"ok": True, "video": str(saved), "deliver": f"MEDIA:{saved}", "cached": True})
         path, summary = make_wrapped(days, fmt=args.get("format"), theme=args.get("theme"))
         return json.dumps({"ok": True, "video": str(path), "deliver": f"MEDIA:{path}", "summary": summary})
     except Exception as exc:
