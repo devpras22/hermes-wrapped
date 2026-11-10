@@ -100,7 +100,7 @@ def _shrink(src: Path) -> Path:
         r = subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-i", str(src), "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
              "-maxrate", "4M", "-bufsize", "8M", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(tmp)],
-            capture_output=True, text=True, timeout=600, check=False)
+            capture_output=True, text=True, timeout=600, check=False, env=_render.clean_env())
         if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 10_000:
             tmp.replace(src)
         else:

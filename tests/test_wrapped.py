@@ -301,3 +301,20 @@ def test_desktop_wrapped_answers_fast_and_hands_video_to_session(tmp_path):
     _t.sleep(1.3)
     assert "already rendered" in reply and sent[0][0] == "sess-2"
     assert "local" in P.LOCAL_PLATFORMS
+
+
+def test_render_subprocess_env_is_minimal(monkeypatch):
+    """Render tools (npx/HyperFrames/Chrome/ffmpeg) must never inherit provider API keys or other secrets."""
+    from _load import load
+
+    mod = load()
+    from hermes_wrapped import render as R  # noqa: E402
+
+    for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "TELEGRAM_BOT_TOKEN", "NPM_TOKEN"):
+        monkeypatch.setenv(k, "SECRET-" + k)
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("HOME", "/tmp/h")
+    env = R.clean_env()
+    assert env["PATH"] == "/usr/bin" and env["HOME"] == "/tmp/h"
+    assert not [k for k, v in env.items() if "SECRET-" in v], env
+    assert mod is not None

@@ -40,7 +40,7 @@ DOMAIN = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b", re.I)  # any domain (
 
 def _config_timezone() -> str:
     """Top-level `timezone:` from the active Hermes config.yaml (read as text; no private imports)."""
-    home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
+    home = T.hermes_home()
     try:
         with open(os.path.join(home, "config.yaml"), encoding="utf-8") as f:
             for line in f:

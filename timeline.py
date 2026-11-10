@@ -165,9 +165,18 @@ def _clean_ask(text: str) -> str:
     return short(redact(" ".join(_plain(text).split())), 220)
 
 
+def hermes_home() -> str:
+    """The active profile's Hermes home (multi-profile safe); falls back to $HERMES_HOME / ~/.hermes standalone."""
+    try:
+        from hermes_constants import get_hermes_home  # type: ignore
+
+        return str(get_hermes_home())
+    except Exception:
+        return os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
+
+
 def default_db_path() -> str:
-    home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
-    return os.path.join(home, "state.db")
+    return os.path.join(hermes_home(), "state.db")
 
 
 def _connect(db_path: str) -> sqlite3.Connection:

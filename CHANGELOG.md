@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Security (catalog review): `npx hyperframes` (and the headless Chrome it downloads) and the ffmpeg re-encode now run with an explicit minimal environment (PATH, HOME, LANG, TMPDIR, proxy/cert and npm/Chrome cache variables only) instead of inheriting the whole Hermes environment, so provider API keys and tokens never reach them. Test: `test_render_subprocess_env_is_minimal`.
+- The Hermes home (state.db, config.yaml timezone) is now resolved with `hermes_constants.get_hermes_home()` in `story.py` and `timeline.py`, so multi-profile setups read the right database and timezone.
+
 ## 0.1.1
 
 - Desktop app: `/wrapped` now answers at once and the finished video plays in the same chat (handed over with `inject_message`; needs `allow_gateway_injection: true`). Fixes the 30-second `slash.exec` timeout and Desktop sessions (platform `local`) being treated as a messaging chat.

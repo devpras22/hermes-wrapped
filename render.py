@@ -321,6 +321,28 @@ class RenderError(RuntimeError):
     pass
 
 
+# Variables the render tools (npx/npm, HyperFrames, headless Chrome, ffmpeg) actually need. Everything else in the
+# Hermes process environment (provider API keys, tokens, gateway secrets) is NOT handed to them.
+_ENV_KEYS = (
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ", "TERM",
+    "TMPDIR", "TMP", "TEMP",
+    "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
+    "NPM_CONFIG_CACHE", "NPM_CONFIG_PREFIX", "NPM_CONFIG_REGISTRY", "NPM_CONFIG_USERCONFIG",
+    "npm_config_cache", "npm_config_prefix", "npm_config_registry", "npm_config_userconfig",
+    "PUPPETEER_CACHE_DIR", "PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
+    "SYSTEMROOT", "COMSPEC", "PATHEXT", "APPDATA", "LOCALAPPDATA", "USERPROFILE",  # Windows
+)
+
+
+def clean_env() -> dict[str, str]:
+    """A minimal environment for render subprocesses: an explicit allow-list, never the inherited one."""
+    env = {k: os.environ[k] for k in _ENV_KEYS if k in os.environ}
+    env.setdefault("PATH", os.defpath)
+    return env
+
+
 def hyperframes_available() -> tuple[bool, str]:
     for tool in ("node", "npx", "ffmpeg"):
         if not shutil.which(tool):
@@ -357,7 +379,7 @@ def render_html(
     ]
     started = time.time()
     try:
-        proc = subprocess.run(cmd, cwd=out, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, cwd=out, capture_output=True, text=True, timeout=timeout, env=clean_env())
     except subprocess.TimeoutExpired as exc:
         raise RenderError(f"render timed out after {timeout}s") from exc
     if proc.returncode != 0 or not mp4.exists() or mp4.stat().st_size == 0:
